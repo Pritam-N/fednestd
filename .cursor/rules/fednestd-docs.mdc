@@ -1,0 +1,45 @@
+---
+alwaysApply: true
+---
+---
+description: Rules for documenting and providing examples for fednestd (architecture, governance, CLI, and examples).
+globs:
+  - "docs/**/*.md"
+  - "examples/**/*"
+---
+
+- Documentation philosophy:
+  - Keep docs and code **in sync**. Whenever architecture, CLI, or config changes, update the relevant docs.
+  - Aim for **actionable** documentation: show commands, config snippets, and minimal examples, not just theory.
+
+- Core docs:
+  - `docs/architecture.md` should explain:
+    - Tiered architecture (Tier 1 vs Tier 2/3).
+    - MoE structure (core layers + experts).
+    - Data and model flows: how training, aggregation, and updates propagate.
+    - How messaging (Kafka) and orchestration (Flyte) fit together.
+  - `docs/governance.md` should cover:
+    - Dual governance pipelines (global vs local).
+    - DataHub + Apache Ranger integration at Tier 1.
+    - Presidio/local sidecar behavior at Tier 2/3.
+    - Privacy guarantees and what can/cannot leave devices.
+  - `docs/cli.md` should:
+    - List all `fednestd` commands and flags.
+    - Provide example invocations and typical workflows.
+
+- Examples:
+  - Keep `examples/` minimal but realistic:
+    - `minimal_tier1_cluster.yaml` and `.md` for Tier 1 setup.
+    - `minimal_tier2_device.yaml` and `.md` for edge devices.
+    - Docker examples that demonstrate a full round (Tier1 + Tier2).
+  - Ensure example configs are valid and match current Pydantic models and CLI options.
+  - You can reference code files via `@` when writing or updating docs so the AI keeps them in context.
+
+- Writing style:
+  - Use clear, concise language, optimized for engineers familiar with ML and distributed systems.
+  - Prefer diagrams and bullet lists to long, dense paragraphs.
+  - When describing a process (e.g., training round), outline it step-by-step.
+
+- When editing docs in Cursor:
+  - Consider bringing in relevant modules with `@src/fednestd/...` to keep explanations accurate.
+  - Keep version numbers and config keys up to date when you change them in the code.

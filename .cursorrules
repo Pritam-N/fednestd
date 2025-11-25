@@ -1,0 +1,86 @@
+You are working in a Python monorepo for a federated learning framework called `fednestd`.
+
+High-level context:
+- This project implements a hierarchical, heterogeneous federated training system:
+  - Tier 1: HPC/data-center clusters training MoE core + experts.
+  - Tier 2/3: IoT / vehicles / mobiles training only adapters (LoRA/QLoRA) on local data.
+- Training is orchestrated via Flyte, messaging via Kafka, with governance using DataHub, Apache Ranger, and local sidecars.
+- The main entrypoint is a CLI named `fednestd`, installed via `pyproject.toml`.
+
+General rules:
+- Always prefer **incremental edits** to existing modules over inventing new files.
+- Before proposing changes, briefly scan:
+  - `docs/architecture.md`
+  - `docs/governance.md`
+  - `docs/cli.md`
+  - The existing module tree under `src/fednestd/`
+- When unsure where a function should live, prefer existing modules:
+  - Training logic → `fednestd/training/`
+  - Model / MoE / adapters → `fednestd/model/`
+  - Governance → `fednestd/governance/`
+  - Messaging / Kafka → `fednestd/messaging/`
+  - Federation server/client → `fednestd/federation/`
+  - Infra / templates → `fednestd/infra/`
+  - Networking / HAProxy / VPN → `fednestd/networking/`
+  - Observability → `fednestd/observability/`
+  - Shared helpers → `fednestd/utils/` or `fednestd/helpers/`
+
+Python style:
+- Use Python 3.10+ features and **type hints everywhere** (function args, return types, key dicts).
+- Keep functions small and composable; avoid giant functions that do many concerns.
+- Avoid “magic” implicit behavior; prefer explicit, clear APIs.
+- Use `from __future__ import annotations` at the top of new modules.
+- Prefer `logging` via `fednestd.observability.logging.get_logger` instead of bare prints.
+
+Typing & safety:
+- Keep the repo **type-checker friendly**:
+  - Explicit types instead of `Any` wherever practical.
+  - Use `TypedDict` or `pydantic` models for structured configs instead of raw dicts.
+- When adding new public functions/classes, provide type annotations and docstrings.
+- If you must use `# type: ignore`, add a short comment explaining why.
+
+CLI & structure:
+- The CLI entrypoint is `src/fednestd/cli.py` with a Typer app.
+- Keep CLI functions thin:
+  - Parse/validate config.
+  - Call deeper library functions in `training/`, `federation/`, etc.
+- Do not embed business logic directly into CLI command bodies.
+
+Logging & errors:
+- Always obtain a logger via:
+  - `from fednestd.observability.logging import get_logger`
+  - `logger = get_logger(__name__)`
+- Prefer structured, informative log messages.
+- Raise explicit exceptions for configuration or runtime errors rather than silently failing.
+- When catching exceptions, log them with enough context to debug.
+
+Kafka & messaging:
+- Use the helpers from `fednestd.messaging.kafka_client` and `fednestd.messaging.topics`.
+- Do not hardcode topic names; use the constants/definitions in `topics.py`.
+- For new topics or messaging flows, update `topics.py` and tests accordingly.
+
+Governance & privacy:
+- Never send raw training data or PII over the wire from Tier 2/3.
+- All outbound payloads from edge nodes must pass through `governance/local_sidecar.py`.
+- When generating or editing code in sidecar/governance modules, preserve the rule:
+  - Only model deltas and minimal metadata may leave the local device.
+
+Tests:
+- For new features, add or update tests under `tests/`:
+  - Prefer small, focused unit tests.
+  - Use fakes/mocks for Kafka, MLflow, DeepSpeed, etc., instead of hitting real services.
+- Keep test names descriptive, e.g. `test_<module>_<behavior>()`.
+
+Docs:
+- If you introduce a new high-level concept or CLI command:
+  - Update or create docs under `docs/` (`architecture.md`, `cli.md`, `governance.md`).
+- Keep docs and code in sync; when changing architecture, also update the docs.
+
+When editing:
+- Respect existing naming and patterns in this repo.
+- Before large refactors, first suggest a small plan, then implement it step by step.
+- Prefer backwards-compatible changes unless explicitly told to break APIs.
+
+When unsure:
+- Prefer to **adapt to the current architecture** rather than invent new patterns.
+- Explain tradeoffs briefly in comments if you choose a non-obvious approach.

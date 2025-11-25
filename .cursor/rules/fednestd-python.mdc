@@ -1,0 +1,77 @@
+---
+alwaysApply: true
+---
+---
+description: Detailed Python implementation rules for fednestd (models, training, federation, and governance).
+globs:
+  - "src/fednestd/**/*.py"
+  - "tests/**/*.py"
+---
+
+- Typing & imports:
+  - Always use `from __future__ import annotations` in new Python modules.
+  - Add type hints for:
+    - All function arguments and return types.
+    - Public attributes of classes.
+  - Use `TypedDict` or Pydantic models for structured config objects rather than raw `dict[str, Any]` in public APIs.
+  - Keep imports **organized and minimal**; avoid circular imports by respecting module boundaries.
+
+- Model & training code:
+  - Put MoE and adapter definitions in `fednestd/model/`:
+    - Core blocks (embeddings, self-attention, norms) in `moe_model.py`.
+    - Adapter layers (LoRA/QLoRA) in `adapters.py`.
+    - Checkpointing logic in `checkpointing.py` with clear separation of `core`, `experts`, and `adapters`.
+    - Quantization hooks in `quantization.py`.
+  - Implement training loops in `fednestd/training/`:
+    - `tier1_trainer.py` for Tier 1 core + expert training and DeepSpeed integration.
+    - `tier2_trainer.py` for edge adapters training.
+    - `aggregation.py` for combining deltas across tiers.
+    - `evaluation.py` for validation and regression checks.
+  - Do not mix training code with CLI or governance; keep responsibilities clean.
+
+- Kafka and messaging:
+  - Define topic names and bootstrap logic in `fednestd/messaging/topics.py`.
+  - Use helper functions from `fednestd/messaging/kafka_client.py` for producers, consumers, and admin clients.
+  - Do not hardcode brokers or topic names in scattered locations; rely on config and centralized topic definitions.
+
+- Governance:
+  - Place global governance integrations in `fednestd/governance/`:
+    - Apache Ranger / DataHub / global metadata hooks.
+    - Presidio-based PII detection and masking.
+  - `local_sidecar.py` is responsible for:
+    - Validating outbound messages from edge nodes.
+    - Ensuring only **model deltas + minimal metadata** are transmitted.
+    - Applying optional DP noise, hashing, or redaction if configured.
+  - When generating or editing governance code, preserve the invariant:
+    - **No user-level PII or raw samples leave the local cluster or device** unless explicitly marked as allowed in config.
+
+- Federation & orchestration:
+  - `federation/server.py`:
+    - Hosts the FedServer (Flower or custom), integrating with Kafka control topics and model store.
+  - `federation/client.py`:
+    - Coordinates edge participation: connect → receive round config → download model → trigger training → upload deltas.
+  - `orchestration/flyte_integration.py` and `orchestration/workflows.py`:
+    - encapsulate Flyte workflows and DAG definitions; keep them declarative.
+  - Do not embed orchestration logic inside lower-level modules like `model` or `training`.
+
+- Observability:
+  - Use `fednestd.observability.logging.get_logger` for all logging.
+  - Add metrics via `observability/metrics.py` for important operations:
+    - number of active clients
+    - round duration
+    - aggregation throughput
+  - For new critical paths, consider adding tracing spans in `observability/tracing.py`.
+
+- Error handling:
+  - Fail fast on invalid configs: raise meaningful exceptions rather than silently continuing.
+  - When catching exceptions, log context (operation, config section, identifiers) to aid debugging.
+  - Avoid catching broad exceptions unless you re-raise or log with rich context.
+
+- Tests:
+  - For any new core code-path (training loop, aggregation logic, governance rules), add tests.
+  - Use mocks or fixtures for external systems (Kafka, MLflow, DeepSpeed, Flyte) to keep tests lightweight.
+  - Use descriptive test names: `test_<module>_<behavior>()`.
+
+- Refactoring guidance:
+  - When refactoring, first align with existing naming conventions and module structure.
+  - Maintain backward compatibility of public APIs if possible; if breaking changes are required, update docs and tests in the same change.

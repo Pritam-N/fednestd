@@ -1,0 +1,88 @@
+---
+alwaysApply: true
+---
+---
+description: Core architecture and coding rules for the fednestd federated nested MoE framework.
+globs:
+  - "src/fednestd/**/*.py"
+  - "tests/**/*.py"
+  - "scripts/**/*.sh"
+---
+
+- Always treat this repository as a **federated nested learning framework**:
+  - Tier 1: HPC / data-center clusters training **core self-attention layers + MoE experts**.
+  - Tiers 2/3: IoT / vehicles / mobiles training **adapters only (LoRA/QLoRA)** on local data.
+  - Communication and coordination go through **Kafka**, **FedServer/FedClient**, and orchestrators like **Flyte**.
+  - Governance is split into **global (DataHub, Apache Ranger)** and **local sidecars (Presidio/PII filters)**.
+
+- Before making non-trivial changes:
+  - Skim `docs/architecture.md`, `docs/governance.md`, and `docs/cli.md` to understand the current design.
+  - Prefer to **fit into the existing architecture** rather than invent new patterns.
+
+- Python + project style:
+  - Use **Python 3.10+** and include `from __future__ import annotations` at the top of new modules.
+  - Add **type hints** for all public functions, method arguments, and return types.
+  - Use explicit container types (e.g. `dict[str, DeploymentProfile]`) instead of `dict`/`list` with inferred `Any`.
+  - Break large functions into smaller, composable units; keep each function focused on one responsibility.
+  - Prefer **pure functions** where possible; keep side effects explicit.
+
+- Logging:
+  - Always obtain a logger via:
+    - `from fednestd.observability.logging import get_logger`
+    - `logger = get_logger(__name__)`
+  - Use `logger.info / warning / error` instead of `print`.
+  - Log enough context for distributed debugging: cluster id, client id, model version, topic names, etc.
+
+- Config & validation:
+  - Centralize configuration via `fednestd.config`:
+    - Use `config.loaders.load_config()` and Pydantic models in `config/models.py`.
+    - Prefer **validated, typed configs** over ad-hoc dicts.
+  - Do not hardcode credentials, endpoints, or paths; read them from config or environment variables.
+
+- Module boundaries:
+  - **Do NOT** put business logic in the CLI. CLI commands in `fednestd/cli.py` should:
+    - Parse flags and config.
+    - Call strongly typed functions in the relevant module (e.g. `training.tier1_trainer.run_core_update`).
+  - For new functionality:
+    - Training logic → `fednestd/training/`
+    - Model / MoE / adapters / quantization → `fednestd/model/`
+    - Kafka / events / topics → `fednestd/messaging/`
+    - FL server/client → `fednestd/federation/`
+    - Governance / PII / Ranger / DataHub → `fednestd/governance/`
+    - Infra templates / profiles → `fednestd/infra/`
+    - HAProxy / VPN / security → `fednestd/networking/`
+    - Observability (logging/metrics/tracing) → `fednestd/observability/`
+    - Misc helpers → `fednestd/utils/` or `fednestd/helpers/`
+
+- Federation semantics:
+  - Tier 1 training:
+    - Responsible for updating **core weights** and **expert weights**: `ΔW_core + ΔW_experts`.
+    - Integrate DeepSpeed and MoE parallelism in `training/tier1_trainer.py`.
+  - Tier 2/3 training:
+    - Only train **adapters / LoRA / QLoRA** on local data: `ΔW_experts_local` or `ΔW_adapters_local`.
+    - Core + experts are **frozen** on edge nodes.
+  - Aggregation:
+    - Implement aggregation in `training/aggregation.py`.
+    - Combine Tier1 and local deltas in a version-aware, reliability-weighted way.
+
+- Data & privacy:
+  - **Never** send raw training samples, PII, or unfiltered logs from Tier 2/3 up to Tier 1.
+  - All outbound payloads from edge devices must be **model deltas or carefully summarized telemetry**.
+  - Enforce these constraints via `governance/local_sidecar.py`; AI-generated code must preserve this design.
+
+- Testing:
+  - For new behavior, add or update tests under `tests/`:
+    - Model & training behavior → `test_moe_model.py`, `test_aggregation.py`.
+    - CLI/config handling → `test_cli.py`, `test_config.py`.
+    - Governance/sidecar behavior → `test_tier2_sidecar.py`.
+  - Prefer fast, deterministic unit tests; mock external systems (Kafka, MLflow, DeepSpeed, etc.).
+  - If adding new modules, include at least one smoke test.
+
+- Documentation:
+  - If adding a new high-level concept, CLI command, or configuration section:
+    - Update `docs/architecture.md`, `docs/governance.md`, or `docs/cli.md` accordingly.
+  - Keep code and docs in sync; avoid undocumented architectural changes.
+
+- When unsure:
+  - Favor **extending existing patterns** instead of new abstractions.
+  - Default to **safety** (privacy, isolation, clear configs) over clever shortcuts.

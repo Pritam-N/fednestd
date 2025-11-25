@@ -1,0 +1,80 @@
+---
+alwaysApply: true
+---
+---
+description: Rules for writing tests for nested + federated learning in fednestd (privacy, safety, and realism).
+globs: ["tests/**/*.py"]
+alwaysApply: false
+---
+
+# USE WHEN writing or modifying tests in this project
+
+- TEST PHILOSOPHY
+  - Tests should **respect the same privacy and federated learning guarantees** as production code.
+  - Never introduce shortcuts that would be unsafe or impossible in real deployments (e.g., sending raw data from edge to server).
+  - Favor **small, deterministic unit tests** with synthetic data and fake updates.
+
+- DATA & PRIVACY IN TESTS
+  - Use only **synthetic, anonymized, or obviously fake data** in tests (toy text, random numbers).
+  - Never hardcode real PII (names, emails, addresses, phone numbers, IDs) in test fixtures.
+  - Do not simulate “raw data upload” from Tier 2/3 to Tier 1; instead:
+    - Generate **model deltas** or fake update payloads that look like real updates.
+    - Assert that only deltas (and minimal metadata) are transmitted.
+
+- FEDERATED LEARNING BEHAVIOR IN TESTS
+  - Tests must preserve the federated constraints:
+    - Tier 1: may load global/core data or curated datasets in tests.
+    - Tier 2/3: must treat data as **local-only**; do not expose it to server code.
+  - When testing edge behavior, simulate:
+    - Local training on synthetic data.
+    - Generation of adapter/delta payloads.
+    - Passing those payloads through the local sidecar before “sending” them.
+
+- NESTED LEARNING STRUCTURE IN TESTS
+  - Keep the nested decomposition explicit in tests:
+    - Core weights (`W_core`) – Tier 1 only.
+    - Expert weights (`W_experts`) – Tier 1 + aggregated deltas.
+    - Adapter weights (LoRA/QLoRA, `ΔW_experts_local`) – Tier 2/3 only.
+  - Tests must **not** blur these boundaries:
+    - Do not update core weights from Tier 2/3 test code.
+    - Do not treat adapters as if they were part of the core parameter set.
+
+- KAFKA / MESSAGING IN TESTS
+  - Use mocks, fakes, or in-memory stubs for Kafka and messaging:
+    - Prefer fake producers/consumers over connecting to real Kafka brokers in unit tests.
+    - For integration tests that do use Kafka, use a test broker with ephemeral topics.
+  - Verify:
+    - That **only** allowed payload types (deltas, telemetry, control messages) are published.
+    - That topics are used consistently with definitions in `messaging/topics.py`.
+
+- SIDECARE & GOVERNANCE IN TESTS
+  - Always include the **local sidecar** in tests around edge → server communication:
+    - Construct test payloads.
+    - Pass them through `governance/local_sidecar.py` (or equivalent helper).
+    - Assert that invalid payloads (containing raw data or PII fields) are rejected.
+  - For global governance (Ranger/DataHub) tests:
+    - Mock external services and assert that:
+      - Policy checks are called as expected.
+      - Access is denied when config or policies say so.
+
+- PATTERNS TO AVOID
+  - Do NOT:
+    - Add “test-only” code paths that send raw training data to a server.
+    - Bypass sidecar/governance checks with special flags (even in tests).
+    - Disable privacy or safety assertions just to make a test pass.
+  - If you need to simulate unsafe behavior (e.g., to test that sidecar blocks it):
+    - Keep it **inside the test** and make sure the final assertion is that the unsafe behavior is prevented or rejected.
+
+- TEST STRUCTURE & NAMING
+  - Use descriptive names that reflect nested/federated behavior, for example:
+    - `test_aggregation_combines_expert_deltas_from_multiple_clients`
+    - `test_sidecar_blocks_payload_with_raw_text_samples`
+    - `test_tier2_trainer_only_updates_adapters_not_core`
+  - Prefer **one behavior per test** and clear Arrange–Act–Assert structure.
+
+- WHEN IN DOUBT
+  - Ask: “Would this pattern be acceptable in a real federated, privacy-sensitive system?”
+  - If not, redesign the test to:
+    - Use synthetic data.
+    - Keep raw data local.
+    - Assert on model deltas, metrics, or governance decisions instead.

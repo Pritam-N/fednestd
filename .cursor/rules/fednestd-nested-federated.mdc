@@ -1,0 +1,179 @@
+---
+alwaysApply: false
+---
+---
+description: Rules for Nested Learning + Federated Learning behavior in the fednestd framework.
+globs:
+  - "src/fednestd/**/*.py"
+  - "docs/**/*.md"
+---
+
+# Core Mental Model
+
+- Treat this project as implementing a **Nested Learning + Federated Learning** system:
+  - Nested Learning: the global model is a **set of nested optimization problems** at different abstraction levels and time-scales (e.g., core, experts, adapters), optimized jointly but with different update frequencies. This is inspired by Google’s Nested Learning paradigm for continual learning and catastrophic-forgetting mitigation.  
+  - Federated Learning: model training happens **across multiple silos and devices**, where **raw data never leaves the local cluster or device**, and only model updates (parameters, gradients, or deltas) are shared and aggregated centrally.
+
+- Any new code must **respect both**:
+  - Nested structure + multi-speed updates.
+  - Federated constraints on privacy, locality, and aggregation.
+
+---
+
+# Nested Learning Rules
+
+- Decompose the model into **nested levels**, with clear responsibilities:
+  - **Level 0 – Core (Tier 1 only)**:
+    - Self-attention layers, embeddings, normalization, routing logic.
+    - Updated infrequently (slow timescale).
+  - **Level 1 – Experts (Tier 1 + aggregated Tier 2/3 deltas)**:
+    - MoE feed-forward experts, routed per token.
+    - Updated at a medium timescale; aggregation accepts deltas from Tier 1 and Tier 2/3.
+  - **Level 2 – Adapters (Tier 2/3 only)**:
+    - LoRA/QLoRA adapters or similar low-rank modules, attached to experts (and possibly attention).
+    - Updated frequently on edge devices at fast timescales.
+
+- Enforce **update separation** in code:
+  - Tier 1 update paths are allowed to modify:
+    - `ΔW_core` and `ΔW_experts`.
+  - Tier 2/3 update paths are allowed to modify:
+    - **Only** `ΔW_experts` (via adapters / LoRA/QLoRA), not `W_core`.
+  - Do not create code paths where Tier 2/3 logic directly updates core weights.
+
+- Model / training modules should reflect nested optimization:
+  - `model/moe_model.py` must expose clear boundaries between:
+    - Core parameters.
+    - Expert parameters.
+    - Adapter parameters.
+  - `training/` modules must:
+    - Treat each level as a separate optimization subproblem.
+    - Support different learning rates, schedules, and frequencies per level.
+
+- Continual learning / catastrophic forgetting:
+  - When making changes to optimization or aggregation, ensure we **do not reset** lower-level parameters unnecessarily.
+  - Encourage mechanisms like:
+    - Regularization to previous expert states (e.g., EWC-like penalties).
+    - Distillation or constraint terms to avoid forgetting earlier tasks.
+  - Never redesign training loops in ways that **collapse nested levels back into a single undifferentiated training process**.
+
+- Time-scales and scheduling:
+  - Design training and aggregation workflows so that:
+    - Core updates (Tier 1) are **relatively infrequent** and usually triggered by curated or global data.
+    - Expert + adapter updates (from edges) can happen more frequently and asynchronously.
+  - If in doubt, bias design toward:
+    - **Slow, stable core**.
+    - **Fast, adaptive experts/adapters**.
+
+---
+
+# Federated Learning Rules
+
+- Data locality & privacy:
+  - **Do not** add any code that transmits raw training data, logs containing PII, or unredacted text/images/audio from:
+    - Tier 2/3 devices to Tier 1.
+    - One Tier 1 silo to another, unless explicitly permitted and anonymized.
+  - All cross-node communication must be:
+    - Model parameters, gradients, or compressed/aggregated statistics.
+    - High-level telemetry (loss, latency, resource metrics) that contain no identifiable user data.
+
+- Edge behavior (Tier 2/3):
+  - Training code for edge clients:
+    - Must operate only on local datasets.
+    - Must update only adapters/LoRA/QLoRA parameters.
+  - Outbound messages from edge clients **must pass through** `governance/local_sidecar.py`:
+    - Sidecar enforces:
+      - No raw samples.
+      - No unfiltered PII.
+      - Only deltas or strongly summarized telemetry.
+
+- Federation server (Tier 1):
+  - Server-side code must:
+    - Accept **only** model updates or aggregated statistics from clients.
+    - Never require or request raw local data.
+  - Aggregation logic (e.g., FedAvg/FedProx-like) must:
+    - Combine updates at the appropriate nested level (experts/adapters).
+    - Optionally apply robustness / weighting (client reliability, staleness, sample size).
+
+- Secure aggregation and privacy tech:
+  - When modifying or adding aggregation logic:
+    - Keep in mind secure aggregation requirements (e.g., LightSecAgg style): updates should be aggregatable without exposing individual client contributions.
+    - Integrate or leave hooks for:
+      - Differential privacy.
+      - Secure aggregation / masking.
+      - Confidential computing / TEEs when appropriate.
+  - Do not design protocols that rely on inspecting individual client raw updates in plaintext on the server when privacy-preserving alternatives are possible.
+
+- Cross-silo vs cross-device:
+  - Cross-silo (Tier 1 clusters):
+    - Assume relatively stable, always-on participants with richer compute.
+    - Can hold more state, more complex governance policies, and deeper integration with DataHub/Ranger.
+  - Cross-device (Tier 2/3 devices):
+    - Assume intermittent availability, constrained compute, and high client churn.
+    - Protocols must be robust to:
+      - Partial participation.
+      - Dropouts.
+      - Heterogeneous resources (e.g., only some can run certain adapter sizes).
+
+---
+
+# Interaction Between Nested + Federated Logic
+
+- Map nested levels to federated tiers:
+  - **Tier 1 cluster (core + experts)**:
+    - Responsible for:
+      - Updating `W_core`.
+      - Global consolidation of `W_experts` using aggregated deltas.
+  - **Tier 2/3 devices (adapters)**:
+    - Train local adapters that effectively produce `ΔW_experts_local`.
+    - Never directly access or modify `W_core` gradients.
+
+- Architecture invariants:
+  - Nested structure must remain valid across federated rounds:
+    - The shape and partitioning of core vs experts vs adapters must be consistent between:
+      - Tier 1 training code.
+      - Tier 2/3 training code.
+      - Aggregation routines.
+  - When changing model architectures, always:
+    - Update both Tier 1 and Tier 2/3 code paths.
+    - Ensure backward compatibility or migration paths for existing checkpoints and updates.
+
+- Asynchronous / hierarchical aggregation:
+  - Code for aggregation should be written with **asynchrony** in mind:
+    - Don’t assume all clients participate in every round.
+    - Allow for partial updates and staleness handling.
+  - Tier 1 aggregation may:
+    - Periodically ingest a batch of edge deltas.
+    - Combine them into expert weights without a synchronized global barrier.
+
+---
+
+# Governance & Compliance Constraints
+
+- Global governance (Tier 1):
+  - Code integrating with Apache Ranger, DataHub, or other catalog/governance systems must:
+    - Treat Tier 1 as the only place where **global metadata about datasets** is maintained.
+    - Enforce access control and auditability for any use of global data.
+  - Changes to these modules should favor:
+    - Explicit policies over implicit default behavior.
+
+- Local governance (Tier 2/3):
+  - `governance/local_sidecar.py` must remain the **enforcer of air-gapped policies**:
+    - No metadata about local datasets leaks unless explicitly allowed.
+    - Policies can be stricter than global rules; they can never be silently bypassed.
+  - When editing sidecar logic, do not:
+    - Add “debug shortcuts” that send raw data when a flag is set.
+    - Introduce paths that bypass sidecar checks.
+
+---
+
+# Implementation & Review Notes
+
+- When generating or modifying training, model, federation, or governance code:
+  - Ask: “Does this change still respect nested learning structure (multi-level, multi-speed optimization)?”  
+  - Ask: “Does this change still respect federated constraints (no raw data sharing, secure aggregation, local training only)?”
+
+- If a conflict appears between convenience and these rules:
+  - Prefer keeping **nested/federated invariants** intact.
+  - If a temporary deviation is absolutely necessary (e.g., for a synthetic test), mark it clearly with comments like `# TEMP: test-only, never for production` and ensure tests don’t encourage unsafe patterns.
+
+- Any code that touches **model updates, aggregation, or cross-device communication** should be reviewed with these rules in mind before being accepted.
