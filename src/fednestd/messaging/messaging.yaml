@@ -1,0 +1,10 @@
+kafka:
+  bootstrap_servers: "localhost:9092"
+  client_id: "fednestd-admin"
+  num_partitions: 3
+  replication_factor: 1
+
+  # Optional: per-topic overrides
+  topic_overrides:
+    tasks.training:
+      num_partitions: 6
