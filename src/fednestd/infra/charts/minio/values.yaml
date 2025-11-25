@@ -1,0 +1,42 @@
+mode: distributed
+replicas: 2
+
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClass: standard
+  accessModes:
+    - ReadWriteOnce
+  volumeClaimTemplate: true   # Enables dynamic PVC per pod
+
+# Credentials loaded from Kubernetes Secret
+existingSecret: minio-secret
+rootUserSecretKey: rootUser
+rootPasswordSecretKey: rootPassword
+
+service:
+  type: LoadBalancer
+  port: 9000
+
+consoleService:
+  type: LoadBalancer
+  port: 9001
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 4Gi
+  limits:
+    cpu: 2
+    memory: 8Gi
+
+podAntiAffinity:
+  type: required
+
+tls:
+  enabled: false
+
+livenessProbe:
+  initialDelaySeconds: 60
+readinessProbe:
+  initialDelaySeconds: 30

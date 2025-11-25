@@ -1,6 +1,53 @@
 # fednestd
 
-***
+## Installation
+
+### Prerequisites
+
+- Python 3.10 or higher
+- pip
+
+### Basic Installation
+
+For Tier 2/3 (edge devices) or basic usage:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -e .
+```
+
+### Tier 1 Installation (with DeepSpeed)
+
+DeepSpeed requires PyTorch to be installed first. Install in this order:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install PyTorch first (required for DeepSpeed build)
+pip install torch>=2.0
+
+# Then install the package with Tier 1 dependencies
+pip install -e ".[tier1]"
+```
+
+Alternatively, install everything in one step (PyTorch will be installed first automatically):
+
+```bash
+pip install torch>=2.0
+pip install -e ".[tier1]"
+```
+
+### Development Installation
+
+For development with testing and linting tools:
+
+```bash
+pip install -e ".[tier1,dev]"
+```
+
+---
 
 # Federated Nested MoE Framework – Architecture & Project Plan
 

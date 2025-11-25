@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fednestd-mlflow
+  labels:
+    name: fednestd-mlflow
+
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fednestd-system
+  labels:
+    name: fednestd-system
+
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fednestd-data
+  labels:
+    name: fednestd-data
+
+
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fednestd-observability
+  labels:
+    name: fednestd-observability
+
+
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fednestd-orchestration
+  labels:
+    name: fednestd-orchestration
+
+
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fednestd-networking
+  labels:
+    name: fednestd-networking

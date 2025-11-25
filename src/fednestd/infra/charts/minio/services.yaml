@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: fednestd-data
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 9000
+      targetPort: 9000
+  selector:
+    app: minio
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-console
+  namespace: fednestd-data
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 9001
+      targetPort: 9001
+  selector:
+    app: minio

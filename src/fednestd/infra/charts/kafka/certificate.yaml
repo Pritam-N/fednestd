@@ -1,0 +1,18 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kafka-brokers
+  namespace: fednestd-system
+spec:
+  secretName: kafka-tls
+  duration: 2160h          # 90 days
+  renewBefore: 360h        # 15 days before expiry
+  commonName: kafka.fednestd-system.svc.cluster.local
+  dnsNames:
+    - kafka.fednestd-system.svc.cluster.local
+    - kafka-0.kafka-headless.fednestd-system.svc.cluster.local
+    - kafka-1.kafka-headless.fednestd-system.svc.cluster.local
+    - kafka-2.kafka-headless.fednestd-system.svc.cluster.local
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer

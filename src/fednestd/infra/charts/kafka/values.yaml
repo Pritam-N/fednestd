@@ -1,0 +1,102 @@
+# values-kafka-prod.yaml – Kafka with TLS via cert-manager-issued secret
+
+replicaCount: 3
+
+zookeeper:
+  enabled: true
+  replicaCount: 3
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+persistence:
+  enabled: true
+  size: 5Gi
+  # storageClass: "fast-ssd"
+
+resources:
+  requests:
+    cpu: "1"
+    memory: "4Gi"
+  limits:
+    cpu: "4"
+    memory: "16Gi"
+
+# Keep service internal-only; fednestd talks to it inside the cluster
+service:
+  type: ClusterIP
+  port: 9092
+
+logRetentionHours: 168
+logRetentionBytes: 53687091200
+
+# ---------- TLS / Auth (internal mTLS-ready baseline) ----------
+auth:
+  clientProtocol: tls
+  interBrokerProtocol: tls
+
+  tls:
+    # Use PEM certificates, not JKS
+    type: pem           # allowed values: jks, pem
+    pemChainIncluded: false
+    # For PEM mode, Bitnami expects secrets with cert/key pairs.
+    # We use the single cert-manager secret for all brokers.
+    existingSecrets:
+      - kafka-tls       # <-- created by the Certificate above
+
+    # Optional: hostname verification settings
+    endpointIdentificationAlgorithm: https
+
+  # (Optional) if you later want SASL_TLS:
+  # sasl:
+  #   jaas:
+  #     enabled: true
+  #     existingSecret: kafka-sasl
+  #   mechanisms:
+  #     - scram-sha-512
+  #   interBrokerMechanism: scram-sha-512
+
+# TLS for provisioning job (topic auto-creation, etc.)
+provisioning:
+  enabled: true
+  auth:
+    tls:
+      type: pem
+      certificatesSecret: kafka-tls
+      cert: tls.crt
+      key: tls.key
+
+# Pod HA
+podDisruptionBudget:
+  maxUnavailable: 1
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: kafka
+          topologyKey: "kubernetes.io/hostname"
+
+# Metrics for Prometheus
+metrics:
+  jmx:
+    enabled: true
+  kafka:
+    enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: fednestd-observability
+    interval: 30s
+    scrapeTimeout: 10s
+    labels:
+      release: prometheus-stack
